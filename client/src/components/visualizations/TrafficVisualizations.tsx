@@ -26,7 +26,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { IDSAnalysisPanel } from "./IDSAnalysisPanel";
+import IDSAnalysisPanel from "./IDSAnalysisPanel";
 import { formatBytes, formatBytesPerSecond, formatByteValue, formatUnit } from "@/lib/formatters";
 
 // Sample data color array
@@ -83,7 +83,7 @@ interface ApiResponse<T> {
   message?: string;
 }
 
-export function TrafficVisualizations({
+export default function TrafficVisualizations({
   deviceId,
   startDate,
   endDate,
@@ -318,28 +318,28 @@ export function TrafficVisualizations({
         {/* Time Range Selector */}
         <div className="flex justify-end mt-4 space-x-2">
           <Button 
-            variant={timeRange === "hour" ? "default" : "outline"}
+            variant={timeRange === "hour" ? "primary" : "outline-primary"}
             size="sm"
             onClick={() => handleTimeRangeChange("hour")}
           >
             1 Giờ
           </Button>
           <Button 
-            variant={timeRange === "day" ? "default" : "outline"}
+            variant={timeRange === "day" ? "primary" : "outline-primary"}
             size="sm"
             onClick={() => handleTimeRangeChange("day")}
           >
             1 Ngày
           </Button>
           <Button 
-            variant={timeRange === "week" ? "default" : "outline"}
+            variant={timeRange === "week" ? "primary" : "outline-primary"}
             size="sm"
             onClick={() => handleTimeRangeChange("week")}
           >
             1 Tuần
           </Button>
           <Button 
-            variant={timeRange === "month" ? "default" : "outline"}
+            variant={timeRange === "month" ? "primary" : "outline-primary"}
             size="sm"
             onClick={() => handleTimeRangeChange("month")}
           >
@@ -473,8 +473,8 @@ export function TrafficVisualizations({
                     <XAxis dataKey="name" />
                     <YAxis />
                     <Tooltip formatter={(value, name) => {
-                      if (name === "rxBytes") return [formatBytes(value), 'Dữ liệu nhận'];
-                      if (name === "txBytes") return [formatBytes(value), 'Dữ liệu gửi'];
+                      if (name === "rxBytes") return [formatBytes(Number(value)), 'Dữ liệu nhận'];
+                      if (name === "txBytes") return [formatBytes(Number(value)), 'Dữ liệu gửi'];
                       return [value, name];
                     }} />
                     <Legend />
@@ -609,7 +609,7 @@ export function TrafficVisualizations({
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" />
                     <YAxis type="category" dataKey="ip" />
-                    <Tooltip formatter={(value) => [formatBytes(value), 'Dung lượng']} />
+                    <Tooltip formatter={(value) => [formatBytes(Number(value)), 'Dung lượng']} />
                     <Legend />
                     <Bar
                       dataKey="bytes"
@@ -682,7 +682,7 @@ export function TrafficVisualizations({
 
                   <div className="flex space-x-2">
                     <Button 
-                      variant="outline"
+                      variant="outline-primary"
                       onClick={() => {
                         fetch("/api/security/test-scan-detection", {
                           method: "POST",
@@ -696,7 +696,7 @@ export function TrafficVisualizations({
                       Mô Phỏng Port Scan
                     </Button>
                     <Button 
-                      variant="outline"
+                      variant="outline-primary"
                       onClick={() => {
                         fetch("/api/security/test-scan-detection", {
                           method: "POST",
@@ -710,7 +710,7 @@ export function TrafficVisualizations({
                       Mô Phỏng DoS Attack
                     </Button>
                     <Button 
-                      variant="outline"
+                      variant="outline-primary"
                       onClick={() => {
                         fetch("/api/security/test-scan-detection", {
                           method: "POST",
