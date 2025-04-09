@@ -504,14 +504,14 @@ const NetworkTrafficAdvanced: React.FC<NetworkTrafficAdvancedProps> = ({ deviceI
   
   // Effect to load log analysis data when tab changes to "analysis"
   useEffect(() => {
-    if (activeTab === "analysis" && deviceId) {
+    if ((activeTab === "analysis" || activeTab === "ports") && deviceId) {
       analyzeTrafficLogs();
     }
   }, [activeTab, deviceId, selectedTimeFrame]);
   
-  // Thiết lập cập nhật tự động cho tab phân tích lưu lượng
+  // Thiết lập cập nhật tự động cho tab phân tích lưu lượng và cổng kết nối
   useEffect(() => {
-    if (activeTab === "analysis" && deviceId) {
+    if ((activeTab === "analysis" || activeTab === "ports") && deviceId) {
       // Tạo interval để cập nhật dữ liệu phân tích mỗi 30 giây
       const intervalId = setInterval(() => {
         console.log("Tự động cập nhật phân tích lưu lượng...");
@@ -556,7 +556,119 @@ const NetworkTrafficAdvanced: React.FC<NetworkTrafficAdvancedProps> = ({ deviceI
   
   // Render the appropriate content based on the active tab
   const renderContent = () => {
-    if (activeTab === "analysis") {
+    if (activeTab === "ports") {
+      return (
+        <div className="p-4">
+          <Card className="border-none bg-slate-950">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-sm font-medium">Cổng kết nối phổ biến</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              {connectionStats?.top10Ports && connectionStats.top10Ports.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-transparent text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-800">
+                        <th className="py-2 px-3 text-gray-400 text-left">Cổng</th>
+                        <th className="py-2 px-3 text-gray-400 text-left">Giao thức</th>
+                        <th className="py-2 px-3 text-gray-400 text-left">Dịch vụ</th>
+                        <th className="py-2 px-3 text-gray-400 text-left">Số kết nối</th>
+                        <th className="py-2 px-3 text-gray-400 text-left">Tỷ lệ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {connectionStats.top10Ports.map((portInfo, index) => (
+                        <tr key={`port-${index}`} className="border-b border-gray-800">
+                          <td className="py-2 px-3 text-white font-mono">{portInfo.port}</td>
+                          <td className="py-2 px-3 text-white">{portInfo.protocol}</td>
+                          <td className="py-2 px-3 text-white">{portInfo.serviceName || 'Unknown'}</td>
+                          <td className="py-2 px-3 text-blue-400 font-mono">{portInfo.connectionCount}</td>
+                          <td className="py-2 px-3 text-green-400 font-mono">{portInfo.percentage.toFixed(1)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-40">
+                  <p className="text-gray-400">Không có dữ liệu về cổng kết nối</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="border-none bg-slate-950">
+              <CardHeader className="p-4 pb-2">
+                <CardTitle className="text-sm font-medium">IP nguồn phổ biến</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {connectionStats?.top10Sources && connectionStats.top10Sources.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full bg-transparent text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-800">
+                          <th className="py-2 px-3 text-gray-400 text-left">Địa chỉ IP</th>
+                          <th className="py-2 px-3 text-gray-400 text-left">Số kết nối</th>
+                          <th className="py-2 px-3 text-gray-400 text-left">Tỷ lệ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {connectionStats.top10Sources.map((source, index) => (
+                          <tr key={`source-${index}`} className="border-b border-gray-800">
+                            <td className="py-2 px-3 text-white font-mono">{source.ipAddress}</td>
+                            <td className="py-2 px-3 text-blue-400 font-mono">{source.connectionCount}</td>
+                            <td className="py-2 px-3 text-green-400 font-mono">{source.percentage.toFixed(1)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-40">
+                    <p className="text-gray-400">Không có dữ liệu về IP nguồn</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            
+            <Card className="border-none bg-slate-950">
+              <CardHeader className="p-4 pb-2">
+                <CardTitle className="text-sm font-medium">IP đích phổ biến</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {connectionStats?.top10Destinations && connectionStats.top10Destinations.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full bg-transparent text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-800">
+                          <th className="py-2 px-3 text-gray-400 text-left">Địa chỉ IP</th>
+                          <th className="py-2 px-3 text-gray-400 text-left">Số kết nối</th>
+                          <th className="py-2 px-3 text-gray-400 text-left">Tỷ lệ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {connectionStats.top10Destinations.map((dest, index) => (
+                          <tr key={`dest-${index}`} className="border-b border-gray-800">
+                            <td className="py-2 px-3 text-white font-mono">{dest.ipAddress}</td>
+                            <td className="py-2 px-3 text-orange-400 font-mono">{dest.connectionCount}</td>
+                            <td className="py-2 px-3 text-green-400 font-mono">{dest.percentage.toFixed(1)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-40">
+                    <p className="text-gray-400">Không có dữ liệu về IP đích</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      );
+    } else if (activeTab === "analysis") {
       return (
         <div className="p-4">
           {isLoadingLogAnalysis ? (
@@ -1005,7 +1117,7 @@ const NetworkTrafficAdvanced: React.FC<NetworkTrafficAdvancedProps> = ({ deviceI
                 <ExternalLinkIcon className="h-3 w-3 mr-1 text-orange-400" />
                 Kết nối ra ngoài:
               </span>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 mb-1">
                 <div className="bg-slate-700/70 rounded p-1.5 text-xs">
                   <span className="text-gray-400">Tổng kết nối: </span>
                   <span className="text-white font-mono">
@@ -1019,6 +1131,35 @@ const NetworkTrafficAdvanced: React.FC<NetworkTrafficAdvancedProps> = ({ deviceI
                   </span>
                 </div>
               </div>
+              
+              {/* Hiển thị danh sách top IPs */}
+              {connectionStats?.top10Sources && connectionStats.top10Sources.length > 0 && (
+                <div className="mt-1 text-xs">
+                  <div className="text-gray-400 mb-0.5">Top IP nguồn:</div>
+                  <div className="max-h-20 overflow-y-auto bg-slate-900/60 rounded p-1">
+                    {connectionStats.top10Sources.slice(0, 3).map((source, index) => (
+                      <div key={`source-${index}`} className="flex justify-between items-center">
+                        <span className="text-white font-mono">{source.ipAddress}</span>
+                        <span className="text-green-400">{source.connectionCount}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {connectionStats?.top10Destinations && connectionStats.top10Destinations.length > 0 && (
+                <div className="mt-1 text-xs">
+                  <div className="text-gray-400 mb-0.5">Top IP đích:</div>
+                  <div className="max-h-20 overflow-y-auto bg-slate-900/60 rounded p-1">
+                    {connectionStats.top10Destinations.slice(0, 3).map((dest, index) => (
+                      <div key={`dest-${index}`} className="flex justify-between items-center">
+                        <span className="text-white font-mono">{dest.ipAddress}</span>
+                        <span className="text-orange-400">{dest.connectionCount}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </>
@@ -1298,6 +1439,16 @@ const NetworkTrafficAdvanced: React.FC<NetworkTrafficAdvancedProps> = ({ deviceI
             onClick={() => setActiveTab("details")}
           >
             Details
+          </button>
+          <button
+            className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 h-7 text-xs ${
+              activeTab === "ports"
+              ? "bg-gray-700 text-gray-200"
+              : "hover:bg-gray-700/50 hover:text-gray-300"
+            }`}
+            onClick={() => setActiveTab("ports")}
+          >
+            Ports
           </button>
           <button
             className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 h-7 text-xs ${
