@@ -102,57 +102,144 @@ class TrafficCollectorService {
     };
   }
   
-  // Specific collector for MikroTik devices
+  // Specialized collector for MikroTik devices - Collects traffic data from all active interfaces
   private async collectMikrotikTraffic(device: any): Promise<{ success: boolean, message: string, data?: any, method?: string }> {
     try {
-      // Connect to MikroTik and get interface statistics
-      const mikrotik = await mikrotikService.connectToDevice(device.id);
+      console.log(`Bắt đầu thu thập lưu lượng từ thiết bị Mikrotik ID: ${device.id}`);
       
-      if (!mikrotik) {
-        console.log("Failed to connect to MikroTik device, using generic collector");
+      // Ensure connection to MikroTik device
+      const connected = await mikrotikService.connectToDevice(device.id);
+      
+      if (!connected) {
+        console.log(`Không thể kết nối đến thiết bị MikroTik ID ${device.id}, sử dụng phương pháp thu thập chung`);
         return this.collectGenericTraffic(device);
       }
       
-      // Get all interfaces to find the WAN interface
-      const interfaces = await mikrotik.execute('/interface/print');
+      // Get the connected client
+      const client = mikrotikService.getClientForDevice(device.id);
       
-      // Find main interface (often ether1)
-      const mainInterface = interfaces.find((iface: any) => 
-        iface.name === 'ether1' || 
-        iface.name.includes('WAN') || 
-        iface.name.includes('Internet')
-      );
-      
-      if (!mainInterface) {
-        return { success: false, message: "Could not identify main interface" };
+      if (!client) {
+        console.log(`Không thể lấy client cho thiết bị MikroTik ID ${device.id}, sử dụng phương pháp thu thập chung`);
+        return this.collectGenericTraffic(device);
       }
       
-      // Get interface traffic stats
-      const stats = await mikrotik.execute(`/interface/monitor-traffic once=yes numbers=${mainInterface.name}`);
+      console.log(`Đã kết nối thành công đến thiết bị MikroTik ID ${device.id}, bắt đầu lấy thông tin giao diện`);
       
-      if (!stats || !stats[0]) {
-        return { success: false, message: "Failed to get traffic statistics" };
+      // Get all interfaces from the device
+      const interfaces = await client.executeCommand('/interface/print');
+      
+      if (!interfaces || !Array.isArray(interfaces) || interfaces.length === 0) {
+        console.log("Không tìm thấy giao diện mạng nào trên thiết bị MikroTik");
+        return this.collectGenericTraffic(device);
       }
       
-      const trafficData = {
-        txBytes: parseInt(stats[0]['tx-byte'] || '0'),
-        rxBytes: parseInt(stats[0]['rx-byte'] || '0'),
-        txRate: parseInt(stats[0]['tx-bits-per-second'] || '0') / 8, // Convert to bytes
-        rxRate: parseInt(stats[0]['rx-bits-per-second'] || '0') / 8  // Convert to bytes
+      console.log(`Tìm thấy ${interfaces.length} giao diện mạng trên thiết bị MikroTik`);
+      
+      // Aggregate traffic from all active interfaces
+      let totalTxBytes = 0;
+      let totalRxBytes = 0;
+      let totalTxRate = 0;
+      let totalRxRate = 0;
+      let interfaceCount = 0;
+      
+      // Filter active interfaces (running and not disabled)
+      const activeInterfaces = interfaces.filter((iface: any) => {
+        const isRunning = iface.running === 'true' || iface.running === true;
+        const isNotDisabled = iface.disabled !== 'true' && iface.disabled !== true;
+        return isRunning && isNotDisabled;
+      });
+      
+      console.log(`Tìm thấy ${activeInterfaces.length} giao diện đang hoạt động`);
+      
+      // If no active interfaces found, use all interfaces
+      const interfacesToMonitor = activeInterfaces.length > 0 ? activeInterfaces : interfaces;
+      
+      try {
+        // Method 1: Try to get traffic data for all interfaces at once
+        console.log("Thử lấy dữ liệu lưu lượng cho tất cả giao diện cùng lúc");
+        const trafficData = await client.executeCommand('/interface/monitor-traffic', ['=once=', '=interface=all']);
+        
+        if (Array.isArray(trafficData) && trafficData.length > 0) {
+          console.log(`Đã nhận ${trafficData.length} bản ghi lưu lượng giao diện`);
+          
+          // Process each interface traffic data
+          trafficData.forEach((traffic: any) => {
+            if (traffic.name) {
+              const txBytes = parseInt(traffic['tx-byte'] || '0');
+              const rxBytes = parseInt(traffic['rx-byte'] || '0');
+              const txRate = parseInt(traffic['tx-bits-per-second'] || '0') / 8; // Convert bits to bytes
+              const rxRate = parseInt(traffic['rx-bits-per-second'] || '0') / 8;
+              
+              console.log(`Giao diện ${traffic.name}: TX=${txBytes}, RX=${rxBytes}, TX Rate=${txRate}B/s, RX Rate=${rxRate}B/s`);
+              
+              totalTxBytes += txBytes;
+              totalRxBytes += rxBytes;
+              totalTxRate += txRate;
+              totalRxRate += rxRate;
+              interfaceCount++;
+            }
+          });
+        }
+      } catch (batchError) {
+        console.error("Lỗi khi thu thập dữ liệu lưu lượng từ tất cả giao diện:", batchError);
+      }
+      
+      // If batch method failed, try individual interfaces
+      if (interfaceCount === 0) {
+        console.log("Thử thu thập lưu lượng từ từng giao diện một...");
+        
+        for (const iface of interfacesToMonitor) {
+          try {
+            // Use proper syntax for executeCommand
+            const stats = await client.executeCommand('/interface/monitor-traffic', ['=once=', `=numbers=${iface.name}`]);
+            
+            if (stats && Array.isArray(stats) && stats.length > 0) {
+              const txBytes = parseInt(stats[0]['tx-byte'] || '0');
+              const rxBytes = parseInt(stats[0]['rx-byte'] || '0');
+              const txRate = parseInt(stats[0]['tx-bits-per-second'] || '0') / 8;
+              const rxRate = parseInt(stats[0]['rx-bits-per-second'] || '0') / 8;
+              
+              console.log(`Giao diện ${iface.name}: TX=${txBytes}, RX=${rxBytes}, TX Rate=${txRate}B/s, RX Rate=${rxRate}B/s`);
+              
+              totalTxBytes += txBytes;
+              totalRxBytes += rxBytes;
+              totalTxRate += txRate;
+              totalRxRate += rxRate;
+              interfaceCount++;
+            }
+          } catch (ifaceError) {
+            console.error(`Lỗi khi thu thập dữ liệu từ giao diện ${iface.name}:`, ifaceError);
+          }
+        }
+      }
+      
+      // If no data was collected, fall back to generic method
+      if (interfaceCount === 0) {
+        console.log("Không thu thập được dữ liệu lưu lượng từ bất kỳ giao diện nào, sử dụng phương pháp thu thập chung");
+        return this.collectGenericTraffic(device);
+      }
+      
+      // Create traffic data object with collected values
+      const resultData = {
+        txBytes: totalTxBytes,
+        rxBytes: totalRxBytes,
+        txRate: totalTxRate,
+        rxRate: totalRxRate
       };
       
-      // Save data to database
-      await this.saveTrafficData(device.id, trafficData);
+      // Save traffic data to database
+      await this.saveTrafficData(device.id, resultData);
       
+      // Return success with collected data
       return {
         success: true,
-        message: "MikroTik traffic data collected successfully",
-        data: trafficData,
+        message: "Đã thu thập dữ liệu lưu lượng MikroTik thành công",
+        data: resultData,
         method: "mikrotik"
       };
       
     } catch (error) {
-      console.error(`Error collecting MikroTik traffic for device ID ${device.id}:`, error);
+      console.error(`Lỗi khi thu thập lưu lượng MikroTik cho thiết bị ID ${device.id}:`, error);
       // Fallback to generic traffic data collection
       return this.collectGenericTraffic(device);
     }

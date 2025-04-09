@@ -2443,6 +2443,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 
 
+  // API endpoint lấy thông tin về DHCP stats
+  router.get("/devices/:id/dhcp-stats", async (req: Request, res: Response) => {
+    try {
+      const deviceId = parseInt(req.params.id);
+      
+      // Lấy thông tin thiết bị
+      const device = await storage.getDevice(deviceId);
+      if (!device) {
+        return res.status(404).json({ 
+          success: false,
+          message: "Thiết bị không tồn tại" 
+        });
+      }
+      
+      // Import service theo yêu cầu để tránh circular dependency
+      const { dhcpStatsService } = await import('./services/dhcp-stats');
+      
+      // Lấy thông tin DHCP stats
+      const dhcpStats = await dhcpStatsService.getDHCPStats(deviceId);
+      
+      if (!dhcpStats) {
+        return res.status(404).json({
+          success: false,
+          message: "Không thể lấy thông tin DHCP từ thiết bị này"
+        });
+      }
+      
+      res.json({
+        success: true,
+        data: dhcpStats
+      });
+    } catch (error: any) {
+      console.error("Lỗi khi lấy thông tin DHCP stats:", error);
+      res.status(500).json({ 
+        success: false,
+        message: `Lỗi khi lấy thông tin DHCP stats: ${error.message}` 
+      });
+    }
+  });
+  
+  // API endpoint lấy thông tin về Connection tracking
+  router.get("/devices/:id/connection-stats", async (req: Request, res: Response) => {
+    try {
+      const deviceId = parseInt(req.params.id);
+      
+      // Lấy thông tin thiết bị
+      const device = await storage.getDevice(deviceId);
+      if (!device) {
+        return res.status(404).json({ 
+          success: false,
+          message: "Thiết bị không tồn tại" 
+        });
+      }
+      
+      // Import service theo yêu cầu để tránh circular dependency
+      const { connectionStatsService } = await import('./services/connection-stats');
+      
+      // Lấy thông tin connection stats
+      const connectionStats = await connectionStatsService.getConnectionStats(deviceId);
+      
+      if (!connectionStats) {
+        return res.status(404).json({
+          success: false,
+          message: "Không thể lấy thông tin connection tracking từ thiết bị này"
+        });
+      }
+      
+      res.json({
+        success: true,
+        data: connectionStats
+      });
+    } catch (error: any) {
+      console.error("Lỗi khi lấy thông tin connection stats:", error);
+      res.status(500).json({ 
+        success: false,
+        message: `Lỗi khi lấy thông tin connection stats: ${error.message}` 
+      });
+    }
+  });
+
   // Tuyến đường API trực tiếp (không qua router)
   app.get('/apitest', (req, res) => {
     res.json({ message: 'API Test Working' });
