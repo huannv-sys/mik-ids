@@ -122,15 +122,47 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
     refetchInterval: refreshInterval,
   });
 
+  // Hàm chuyển đổi bytes sang đơn vị đọc được (KB, MB, GB, TB)
+  const formatByteValue = (bytes: number, toUnit: string = 'MB', decimals = 2) => {
+    if (bytes === 0) return '0';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    const targetUnitIndex = sizes.indexOf(toUnit);
+    
+    if (targetUnitIndex === -1) return bytes.toString(); // Nếu đơn vị không hợp lệ
+    
+    return (bytes / Math.pow(k, targetUnitIndex)).toFixed(decimals);
+  };
+  
+  // Hàm xác định đơn vị phù hợp cho một giá trị byte
+  const formatUnit = (bytes: number, preferredIndex: number = -1) => {
+    if (bytes === 0) return 'Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    
+    // Nếu chỉ định một đơn vị (index) ưu tiên, sử dụng đơn vị đó nếu hợp lệ
+    if (preferredIndex >= 0 && preferredIndex < sizes.length) {
+      return sizes[preferredIndex];
+    }
+    
+    // Nếu không, xác định đơn vị phù hợp nhất
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    // Đảm bảo index không vượt quá mảng sizes
+    return sizes[Math.min(i, sizes.length - 1)];
+  };
+
   // Format the bandwidth data for visualization
   const formatBandwidthData = (): TrafficDataPoint[] => {
     if (!trafficData?.data) return [];
     
     return trafficData.data.map((item: any) => ({
       timestamp: new Date(item.timestamp).toLocaleTimeString(),
-      download: (item.download / (1024 * 1024)).toFixed(2), // Convert to MB
-      upload: (item.upload / (1024 * 1024)).toFixed(2), // Convert to MB
-      total: ((item.download + item.upload) / (1024 * 1024)).toFixed(2), // Convert to MB
+      download: formatByteValue(item.download, 'MB', 2), // Convert to MB
+      upload: formatByteValue(item.upload, 'MB', 2), // Convert to MB
+      total: formatByteValue(item.download + item.upload, 'MB', 2), // Convert to MB
     }));
   };
 
@@ -191,12 +223,18 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
   const getStatistics = () => {
     if (!trafficData?.data) {
       return {
-        totalDownload: 0,
-        totalUpload: 0,
-        peakDownload: 0,
-        peakUpload: 0,
-        avgDownload: 0,
-        avgUpload: 0,
+        totalDownload: '0.00',
+        totalUpload: '0.00',
+        totalDownloadUnit: 'GB',
+        totalUploadUnit: 'GB',
+        peakDownload: '0.00',
+        peakUpload: '0.00',
+        peakDownloadUnit: 'MB/s',
+        peakUploadUnit: 'MB/s',
+        avgDownload: '0.00',
+        avgUpload: '0.00',
+        avgDownloadUnit: 'MB/s',
+        avgUploadUnit: 'MB/s',
       };
     }
 
@@ -213,13 +251,27 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
       peakUpload = Math.max(peakUpload, item.upload);
     });
 
+    // Lấy giá trị đơn vị thích hợp
+    const totalDownloadUnit = formatUnit(totalDownload, 3); // giữ ở mức GB
+    const totalUploadUnit = formatUnit(totalUpload, 3); // giữ ở mức GB
+    const peakDownloadUnit = formatUnit(peakDownload, 2) + '/s'; // giữ ở mức MB/s
+    const peakUploadUnit = formatUnit(peakUpload, 2) + '/s'; // giữ ở mức MB/s
+    const avgDownUnit = formatUnit(totalDownload / data.length, 2) + '/s';
+    const avgUpUnit = formatUnit(totalUpload / data.length, 2) + '/s';
+
     return {
-      totalDownload: (totalDownload / (1024 * 1024 * 1024)).toFixed(2), // GB
-      totalUpload: (totalUpload / (1024 * 1024 * 1024)).toFixed(2), // GB
-      peakDownload: (peakDownload / (1024 * 1024)).toFixed(2), // MB
-      peakUpload: (peakUpload / (1024 * 1024)).toFixed(2), // MB
-      avgDownload: (totalDownload / data.length / (1024 * 1024)).toFixed(2), // MB
-      avgUpload: (totalUpload / data.length / (1024 * 1024)).toFixed(2), // MB
+      totalDownload: formatByteValue(totalDownload, totalDownloadUnit.replace('/s', '')),
+      totalUpload: formatByteValue(totalUpload, totalUploadUnit.replace('/s', '')),
+      totalDownloadUnit,
+      totalUploadUnit,
+      peakDownload: formatByteValue(peakDownload, peakDownloadUnit.replace('/s', '')),
+      peakUpload: formatByteValue(peakUpload, peakUploadUnit.replace('/s', '')),
+      peakDownloadUnit,
+      peakUploadUnit,
+      avgDownload: formatByteValue(totalDownload / data.length, avgDownUnit.replace('/s', '')),
+      avgUpload: formatByteValue(totalUpload / data.length, avgUpUnit.replace('/s', '')),
+      avgDownloadUnit: avgDownUnit,
+      avgUploadUnit: avgUpUnit,
     };
   };
 
@@ -297,25 +349,25 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{stats.totalDownload} GB</div>
+                <div className="text-2xl font-bold">{stats.totalDownload} {stats.totalDownloadUnit}</div>
                 <p className="text-sm text-gray-500">Tổng tải xuống</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{stats.totalUpload} GB</div>
+                <div className="text-2xl font-bold">{stats.totalUpload} {stats.totalUploadUnit}</div>
                 <p className="text-sm text-gray-500">Tổng tải lên</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{stats.peakDownload} MB/s</div>
+                <div className="text-2xl font-bold">{stats.peakDownload} {stats.peakDownloadUnit}</div>
                 <p className="text-sm text-gray-500">Tốc độ tải xuống cao nhất</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{stats.peakUpload} MB/s</div>
+                <div className="text-2xl font-bold">{stats.peakUpload} {stats.peakUploadUnit}</div>
                 <p className="text-sm text-gray-500">Tốc độ tải lên cao nhất</p>
               </CardContent>
             </Card>
