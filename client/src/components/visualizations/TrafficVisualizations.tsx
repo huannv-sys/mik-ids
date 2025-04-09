@@ -25,16 +25,12 @@ import {
 } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import IDSAnalysisPanel from "@/components/visualizations/IDSAnalysisPanel";
+import { IDSAnalysisPanel } from "./IDSAnalysisPanel";
+import { formatBytes, formatBytesPerSecond, formatByteValue, formatUnit } from "@/lib/formatters";
 
-// Colors for visualization
-const COLORS = [
-  "#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8", 
-  "#82CA9D", "#FFC658", "#8DD1E1", "#A4DE6C", "#D0ED57"
-];
+// Sample data color array
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
 
 interface TrafficVisualizationsProps {
   deviceId: number;
@@ -45,9 +41,12 @@ interface TrafficVisualizationsProps {
 
 interface TrafficDataPoint {
   timestamp: string;
-  download: number;
-  upload: number;
-  total: number;
+  download: string;
+  upload: string;
+  total: string;
+  rawDownload: number;
+  rawUpload: number;
+  rawTotal: number;
 }
 
 interface Protocol {
@@ -78,99 +77,94 @@ interface InterfaceStats {
   percentage: number;
 }
 
-const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
+interface ApiResponse<T> {
+  success: boolean;
+  data: T[];
+  message?: string;
+}
+
+export function TrafficVisualizations({
   deviceId,
   startDate,
   endDate,
-  refreshInterval = 60000,
-}) => {
+  refreshInterval = 60000, // Default refresh interval: 1 minute
+}: TrafficVisualizationsProps) {
   const [activeTab, setActiveTab] = useState("bandwidth");
   const [timeRange, setTimeRange] = useState<"hour" | "day" | "week" | "month">("hour");
 
+  // Create API endpoint with query parameters
+  const trafficEndpoint = `/api/devices/${deviceId}/traffic?timeRange=${timeRange}${
+    startDate ? `&startDate=${startDate}` : ""
+  }${endDate ? `&endDate=${endDate}` : ""}`;
+
+  const protocolsEndpoint = `/api/devices/${deviceId}/protocols?timeRange=${timeRange}${
+    startDate ? `&startDate=${startDate}` : ""
+  }${endDate ? `&endDate=${endDate}` : ""}`;
+
+  const sourcesEndpoint = `/api/devices/${deviceId}/sources?timeRange=${timeRange}${
+    startDate ? `&startDate=${startDate}` : ""
+  }${endDate ? `&endDate=${endDate}` : ""}`;
+
+  const interfaceStatsEndpoint = `/api/devices/${deviceId}/interface-stats?timeRange=${timeRange}${
+    startDate ? `&startDate=${startDate}` : ""
+  }${endDate ? `&endDate=${endDate}` : ""}`;
+
   // Fetch traffic data
-  const { data: trafficData, isLoading: trafficLoading } = useQuery({
-    queryKey: ['/api/devices', deviceId, 'traffic', timeRange],
-    queryFn: () => apiRequest(`/api/devices/${deviceId}/traffic?timeRange=${timeRange}`),
-    refetchInterval: refreshInterval,
-    refetchOnWindowFocus: true,
-  });
-
-  // Fetch interface statistics data - REAL DATA
-  const { data: interfaceStatsData, isLoading: interfaceStatsLoading } = useQuery({
-    queryKey: ['/api/devices', deviceId, 'interface-stats'],
-    queryFn: () => apiRequest(`/api/devices/${deviceId}/interface-stats`),
+  const { data: trafficData, isLoading: trafficLoading } = useQuery<ApiResponse<any>>({
+    queryKey: [trafficEndpoint],
     refetchInterval: refreshInterval,
   });
 
-  // Fetch protocol distribution data
-  const { data: protocolData, isLoading: protocolLoading } = useQuery({
-    queryKey: ['/api/devices', deviceId, 'protocols', timeRange],
-    queryFn: () => apiRequest(`/api/devices/${deviceId}/protocols?timeRange=${timeRange}`),
+  // Fetch protocol data
+  const { data: protocolData, isLoading: protocolLoading } = useQuery<ApiResponse<any>>({
+    queryKey: [protocolsEndpoint],
     refetchInterval: refreshInterval,
   });
 
-  // Fetch top sources data
-  const { data: sourceData, isLoading: sourceLoading } = useQuery({
-    queryKey: ['/api/devices', deviceId, 'sources', timeRange],
-    queryFn: () => apiRequest(`/api/devices/${deviceId}/sources?timeRange=${timeRange}&limit=10`),
+  // Fetch source IP data
+  const { data: sourceData, isLoading: sourceLoading } = useQuery<ApiResponse<any>>({
+    queryKey: [sourcesEndpoint],
+    refetchInterval: refreshInterval,
+  });
+
+  // Fetch interface stats
+  const { data: interfaceStatsData, isLoading: interfaceStatsLoading } = useQuery<ApiResponse<any>>({
+    queryKey: [interfaceStatsEndpoint],
     refetchInterval: refreshInterval,
   });
 
   // Fetch anomaly data
-  const { data: anomalyData, isLoading: anomalyLoading } = useQuery({
+  const { data: anomalyData, isLoading: anomalyLoading } = useQuery<ApiResponse<any>>({
     queryKey: ['/api/security/anomalies', {startTime: startDate, endTime: endDate}],
     refetchInterval: refreshInterval,
   });
-
-  // Hàm chuyển đổi bytes sang đơn vị đọc được (KB, MB, GB, TB)
-  const formatByteValue = (bytes: number, toUnit: string = 'MB', decimals = 2) => {
-    if (bytes === 0) return '0';
-    
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
-    const targetUnitIndex = sizes.indexOf(toUnit);
-    
-    if (targetUnitIndex === -1) return bytes.toString(); // Nếu đơn vị không hợp lệ
-    
-    return (bytes / Math.pow(k, targetUnitIndex)).toFixed(decimals);
-  };
-  
-  // Hàm xác định đơn vị phù hợp cho một giá trị byte
-  const formatUnit = (bytes: number, preferredIndex: number = -1) => {
-    if (bytes === 0) return 'Bytes';
-    
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
-    
-    // Nếu chỉ định một đơn vị (index) ưu tiên, sử dụng đơn vị đó nếu hợp lệ
-    if (preferredIndex >= 0 && preferredIndex < sizes.length) {
-      return sizes[preferredIndex];
-    }
-    
-    // Nếu không, xác định đơn vị phù hợp nhất
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    // Đảm bảo index không vượt quá mảng sizes
-    return sizes[Math.min(i, sizes.length - 1)];
-  };
 
   // Format the bandwidth data for visualization
   const formatBandwidthData = (): TrafficDataPoint[] => {
     if (!trafficData?.data) return [];
     
-    return trafficData.data.map((item: any) => ({
-      timestamp: new Date(item.timestamp).toLocaleTimeString(),
-      download: formatByteValue(item.download, 'MB', 2), // Convert to MB
-      upload: formatByteValue(item.upload, 'MB', 2), // Convert to MB
-      total: formatByteValue(item.download + item.upload, 'MB', 2), // Convert to MB
-    }));
+    return trafficData.data.map((item: any) => {
+      const downloadBytes = item.download || 0;
+      const uploadBytes = item.upload || 0;
+      const totalBytes = downloadBytes + uploadBytes;
+      
+      return {
+        timestamp: new Date(item.timestamp).toLocaleTimeString(),
+        download: formatByteValue(downloadBytes, 'MB', 2),
+        upload: formatByteValue(uploadBytes, 'MB', 2),
+        total: formatByteValue(totalBytes, 'MB', 2),
+        rawDownload: downloadBytes,
+        rawUpload: uploadBytes,
+        rawTotal: totalBytes
+      };
+    });
   };
 
   // Format protocol data for visualization
   const formatProtocolData = (): Protocol[] => {
     if (!protocolData?.data) return [];
     
-    return protocolData.data.map((item: any, index: number) => ({
+    return protocolData.data.map((item: any) => ({
       name: item.protocol,
       value: item.count,
       percent: item.percentage,
@@ -201,7 +195,7 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
     }));
   };
   
-  // Format interface statistics data for visualization - REAL DATA
+  // Format interface statistics data
   const formatInterfaceStats = (): InterfaceStats[] => {
     if (!interfaceStatsData?.data) return [];
     
@@ -225,16 +219,16 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
       return {
         totalDownload: '0.00',
         totalUpload: '0.00',
-        totalDownloadUnit: 'GB',
-        totalUploadUnit: 'GB',
+        totalDownloadFormatted: formatBytes(0),
+        totalUploadFormatted: formatBytes(0),
         peakDownload: '0.00',
         peakUpload: '0.00',
-        peakDownloadUnit: 'MB/s',
-        peakUploadUnit: 'MB/s',
+        peakDownloadFormatted: formatBytesPerSecond(0),
+        peakUploadFormatted: formatBytesPerSecond(0),
         avgDownload: '0.00',
         avgUpload: '0.00',
-        avgDownloadUnit: 'MB/s',
-        avgUploadUnit: 'MB/s',
+        avgDownloadFormatted: formatBytesPerSecond(0),
+        avgUploadFormatted: formatBytesPerSecond(0),
       };
     }
 
@@ -245,33 +239,28 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
     let peakUpload = 0;
 
     data.forEach((item: any) => {
-      totalDownload += item.download;
-      totalUpload += item.upload;
-      peakDownload = Math.max(peakDownload, item.download);
-      peakUpload = Math.max(peakUpload, item.upload);
+      totalDownload += item.download || 0;
+      totalUpload += item.upload || 0;
+      peakDownload = Math.max(peakDownload, item.download || 0);
+      peakUpload = Math.max(peakUpload, item.upload || 0);
     });
-
-    // Lấy giá trị đơn vị thích hợp
-    const totalDownloadUnit = formatUnit(totalDownload, 3); // giữ ở mức GB
-    const totalUploadUnit = formatUnit(totalUpload, 3); // giữ ở mức GB
-    const peakDownloadUnit = formatUnit(peakDownload, 2) + '/s'; // giữ ở mức MB/s
-    const peakUploadUnit = formatUnit(peakUpload, 2) + '/s'; // giữ ở mức MB/s
-    const avgDownUnit = formatUnit(totalDownload / data.length, 2) + '/s';
-    const avgUpUnit = formatUnit(totalUpload / data.length, 2) + '/s';
+    
+    const avgDownload = totalDownload / data.length;
+    const avgUpload = totalUpload / data.length;
 
     return {
-      totalDownload: formatByteValue(totalDownload, totalDownloadUnit.replace('/s', '')),
-      totalUpload: formatByteValue(totalUpload, totalUploadUnit.replace('/s', '')),
-      totalDownloadUnit,
-      totalUploadUnit,
-      peakDownload: formatByteValue(peakDownload, peakDownloadUnit.replace('/s', '')),
-      peakUpload: formatByteValue(peakUpload, peakUploadUnit.replace('/s', '')),
-      peakDownloadUnit,
-      peakUploadUnit,
-      avgDownload: formatByteValue(totalDownload / data.length, avgDownUnit.replace('/s', '')),
-      avgUpload: formatByteValue(totalUpload / data.length, avgUpUnit.replace('/s', '')),
-      avgDownloadUnit: avgDownUnit,
-      avgUploadUnit: avgUpUnit,
+      totalDownload,
+      totalUpload,
+      totalDownloadFormatted: formatBytes(totalDownload),
+      totalUploadFormatted: formatBytes(totalUpload),
+      peakDownload,
+      peakUpload,
+      peakDownloadFormatted: formatBytesPerSecond(peakDownload),
+      peakUploadFormatted: formatBytesPerSecond(peakUpload),
+      avgDownload,
+      avgUpload,
+      avgDownloadFormatted: formatBytesPerSecond(avgDownload),
+      avgUploadFormatted: formatBytesPerSecond(avgUpload),
     };
   };
 
@@ -298,6 +287,24 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
 
   const anomalyStats = getAnomalyStats();
 
+  // Helper function for API requests
+  const apiRequest = async (url: string, options = {}) => {
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        ...options,
+      });
+      
+      return await response.json();
+    } catch (error) {
+      console.error("API request error:", error);
+      return { success: false, message: 'API request failed' };
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -311,33 +318,29 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
         {/* Time Range Selector */}
         <div className="flex justify-end mt-4 space-x-2">
           <Button 
-            variant="outline" 
+            variant={timeRange === "hour" ? "default" : "outline"}
             size="sm"
-            className={timeRange === "hour" ? "bg-primary text-primary-foreground" : ""}
             onClick={() => handleTimeRangeChange("hour")}
           >
             1 Giờ
           </Button>
           <Button 
-            variant="outline" 
+            variant={timeRange === "day" ? "default" : "outline"}
             size="sm"
-            className={timeRange === "day" ? "bg-primary text-primary-foreground" : ""}
             onClick={() => handleTimeRangeChange("day")}
           >
             1 Ngày
           </Button>
           <Button 
-            variant="outline" 
+            variant={timeRange === "week" ? "default" : "outline"}
             size="sm"
-            className={timeRange === "week" ? "bg-primary text-primary-foreground" : ""}
             onClick={() => handleTimeRangeChange("week")}
           >
             1 Tuần
           </Button>
           <Button 
-            variant="outline" 
+            variant={timeRange === "month" ? "default" : "outline"}
             size="sm"
-            className={timeRange === "month" ? "bg-primary text-primary-foreground" : ""}
             onClick={() => handleTimeRangeChange("month")}
           >
             1 Tháng
@@ -349,25 +352,25 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{stats.totalDownload} {stats.totalDownloadUnit}</div>
+                <div className="text-2xl font-bold">{stats.totalDownloadFormatted}</div>
                 <p className="text-sm text-gray-500">Tổng tải xuống</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{stats.totalUpload} {stats.totalUploadUnit}</div>
+                <div className="text-2xl font-bold">{stats.totalUploadFormatted}</div>
                 <p className="text-sm text-gray-500">Tổng tải lên</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{stats.peakDownload} {stats.peakDownloadUnit}</div>
+                <div className="text-2xl font-bold">{stats.peakDownloadFormatted}</div>
                 <p className="text-sm text-gray-500">Tốc độ tải xuống cao nhất</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{stats.peakUpload} {stats.peakUploadUnit}</div>
+                <div className="text-2xl font-bold">{stats.peakUploadFormatted}</div>
                 <p className="text-sm text-gray-500">Tốc độ tải lên cao nhất</p>
               </CardContent>
             </Card>
@@ -388,7 +391,11 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="timestamp" />
                     <YAxis />
-                    <Tooltip />
+                    <Tooltip 
+                      formatter={(value, name) => {
+                        return [`${value} MB/s`, name === "download" ? "Tải xuống" : name === "upload" ? "Tải lên" : "Tổng"];
+                      }}
+                    />
                     <Legend />
                     <Area
                       type="monotone"
@@ -436,10 +443,7 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
                       ))}
                     </Pie>
                     <Tooltip 
-                      formatter={(value) => [
-                        `${(Number(value) / (1024*1024)).toFixed(2)} MB`, 
-                        'Lưu lượng'
-                      ]} 
+                      formatter={(value) => [formatBytes(Number(value)), 'Lưu lượng']} 
                     />
                     <Legend />
                   </PieChart>
@@ -450,31 +454,38 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
             <Card>
               <CardHeader>
                 <CardTitle>Lưu Lượng Giao Diện</CardTitle>
-                <CardDescription>Dữ liệu đã gửi và nhận theo giao diện (MB)</CardDescription>
+                <CardDescription>Dữ liệu đã gửi và nhận theo giao diện</CardDescription>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={400}>
                   <BarChart
                     data={formatInterfaceStats().map(item => ({
                       ...item,
-                      rxBytes: (item.rxBytes / (1024 * 1024)).toFixed(2), // Convert to MB
-                      txBytes: (item.txBytes / (1024 * 1024)).toFixed(2)  // Convert to MB
+                      name: item.name,
+                      rxFormatted: formatBytes(item.rxBytes),
+                      txFormatted: formatBytes(item.txBytes),
+                      rxBytes: item.rxBytes,
+                      txBytes: item.txBytes
                     }))}
                     margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" />
                     <YAxis />
-                    <Tooltip formatter={(value) => [`${value} MB`, 'Dung lượng']} />
+                    <Tooltip formatter={(value, name) => {
+                      if (name === "rxBytes") return [formatBytes(value), 'Dữ liệu nhận'];
+                      if (name === "txBytes") return [formatBytes(value), 'Dữ liệu gửi'];
+                      return [value, name];
+                    }} />
                     <Legend />
                     <Bar
                       dataKey="rxBytes"
-                      name="Dữ liệu nhận (MB)"
+                      name="Dữ liệu nhận"
                       fill="#0088FE"
                     />
                     <Bar
                       dataKey="txBytes"
-                      name="Dữ liệu gửi (MB)"
+                      name="Dữ liệu gửi"
                       fill="#00C49F"
                     />
                   </BarChart>
@@ -581,14 +592,16 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
             <Card>
               <CardHeader>
                 <CardTitle>Lưu Lượng Theo IP</CardTitle>
-                <CardDescription>Dung lượng dữ liệu (MB) theo IP</CardDescription>
+                <CardDescription>Dung lượng dữ liệu theo IP</CardDescription>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={400}>
                   <BarChart
                     data={formatSourceData().slice(0, 10).map(item => ({
                       ...item,
-                      bytes: (item.bytes / (1024 * 1024)).toFixed(2) // Convert to MB
+                      ip: item.ip,
+                      bytesFormatted: formatBytes(item.bytes),
+                      bytes: item.bytes
                     }))}
                     layout="vertical"
                     margin={{ top: 10, right: 30, left: 50, bottom: 0 }}
@@ -596,11 +609,11 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" />
                     <YAxis type="category" dataKey="ip" />
-                    <Tooltip formatter={(value) => [`${value} MB`, 'Dung lượng']} />
+                    <Tooltip formatter={(value) => [formatBytes(value), 'Dung lượng']} />
                     <Legend />
                     <Bar
                       dataKey="bytes"
-                      name="Dung lượng (MB)"
+                      name="Dung lượng"
                       fill="#00C49F"
                     />
                   </BarChart>
@@ -669,33 +682,42 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
 
                   <div className="flex space-x-2">
                     <Button 
-                      variant="outline" 
+                      variant="outline"
                       onClick={() => {
-                        apiRequest("/api/security/test-scan-detection", {
+                        fetch("/api/security/test-scan-detection", {
                           method: "POST",
-                          data: { deviceId, type: "port_scan" }
+                          headers: {
+                            "Content-Type": "application/json"
+                          },
+                          body: JSON.stringify({ deviceId, type: "port_scan" })
                         });
                       }}
                     >
                       Mô Phỏng Port Scan
                     </Button>
                     <Button 
-                      variant="outline" 
+                      variant="outline"
                       onClick={() => {
-                        apiRequest("/api/security/test-scan-detection", {
+                        fetch("/api/security/test-scan-detection", {
                           method: "POST",
-                          data: { deviceId, type: "dos_attack" }
+                          headers: {
+                            "Content-Type": "application/json"
+                          },
+                          body: JSON.stringify({ deviceId, type: "dos_attack" })
                         });
                       }}
                     >
                       Mô Phỏng DoS Attack
                     </Button>
                     <Button 
-                      variant="outline" 
+                      variant="outline"
                       onClick={() => {
-                        apiRequest("/api/security/test-scan-detection", {
+                        fetch("/api/security/test-scan-detection", {
                           method: "POST",
-                          data: { deviceId, type: "bruteforce" }
+                          headers: {
+                            "Content-Type": "application/json"
+                          },
+                          body: JSON.stringify({ deviceId, type: "bruteforce" })
                         });
                       }}
                     >
@@ -723,8 +745,8 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
                           <th className="text-left p-2">Thời gian</th>
                           <th className="text-left p-2">IP Nguồn</th>
                           <th className="text-left p-2">IP Đích</th>
-                          <th className="text-left p-2">Xác suất</th>
                           <th className="text-left p-2">Loại</th>
+                          <th className="text-left p-2">Độ tin cậy</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -733,26 +755,25 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
                             <td className="p-2">{anomaly.timestamp}</td>
                             <td className="p-2">{anomaly.source_ip}</td>
                             <td className="p-2">{anomaly.destination_ip}</td>
-                            <td className="p-2">
-                              {(anomaly.probability * 100).toFixed(1)}%
-                            </td>
                             <td className="p-2">{anomaly.anomaly_type}</td>
+                            <td className="p-2">
+                              <span 
+                                className={`px-2 py-1 rounded text-white text-sm ${
+                                  anomaly.probability > 0.7 ? 'bg-red-500' : 
+                                  anomaly.probability > 0.4 ? 'bg-yellow-500' : 'bg-green-500'
+                                }`}
+                              >
+                                {(anomaly.probability * 100).toFixed(1)}%
+                              </span>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-gray-400 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                      <path d="M12 8v4" />
-                      <path d="M12 16h.01" />
-                    </svg>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Không Phát Hiện Xâm Nhập</h3>
-                    <p className="text-sm text-gray-500 text-center">
-                      Chưa phát hiện hoạt động đáng ngờ hoặc xâm nhập nào. Hệ thống đang giám sát.
-                    </p>
+                  <div className="text-center py-8 text-gray-500">
+                    Chưa phát hiện hoạt động bất thường
                   </div>
                 )}
               </CardContent>
@@ -762,6 +783,4 @@ const TrafficVisualizations: React.FC<TrafficVisualizationsProps> = ({
       </Tabs>
     </div>
   );
-};
-
-export default TrafficVisualizations;
+}
